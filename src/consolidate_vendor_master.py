@@ -509,3 +509,180 @@ def parse_types_and_dates(df):
         logger.exception("step_3 failed: Numeric or date parsing error.")
         raise
 
+
+# =============================================================================
+# 8. STEP 4: DATA QUALITY GATE AND QUARANTINE SPLIT
+# =============================================================================
+
+def split_quarantine_records(df):
+    """
+    Apply the three rejection rules in the assignment:
+      - Missing or blank vendor_name
+      - Invalid/NaN contract_value_usd
+      - Negative lead_time_days
+
+    A record violating more than one rule receives all applicable
+    rejection reasons separated by semicolons.
+    """
+
+    logger = logging.getLogger(LOGGER_NAME)
+
+    try:
+        logger.info("step_4: Data quality validation started")
+
+        df = df.copy()
+
+        # Rule 1: Missing or blank vendor name.
+        missing_vendor_name = (
+            df["vendor_name"].isna()
+            | df["vendor_name"].astype("string").str.strip().eq("").fillna(False)
+        )
+
+        # Rule 2: Invalid or unparseable contract value.
+        invalid_contract_value = df["contract_value_usd"].isna()
+
+        # Rule 3: Negative lead time.
+        negative_lead_time = df["lead_time_days"].lt(0).fillna(False)
+
+        # Build rejection reasons without losing records that violate
+        # more than one quality rule.
+        rejection_reasons = pd.Series(
+            "",
+            index=df.index,
+            dtype="object",
+        )
+
+        rejection_rules = [
+            (missing_vendor_name, "MISSING_VENDOR_NAME"),
+            (invalid_contract_value, "INVALID_CONTRACT_VALUE"),
+            (negative_lead_time, "NEGATIVE_LEAD_TIME"),
+        ]
+
+        for condition, reason in rejection_rules:
+            rejection_reasons.loc[condition] = (
+                rejection_reasons.loc[condition].apply(
+                    lambda current_reason: (
+                        f"{current_reason};{reason}"
+                        if current_reason
+                        else reason
+                    )
+                )
+            )
+
+        quarantine_mask = rejection_reasons.ne("")
+
+        # Preserve rejected source records and attach rejection_reason.
+        df_quarantine = df.loc[quarantine_mask].copy()
+        df_quarantine["rejection_reason"] = (
+            rejection_reasons.loc[quarantine_mask]
+        )
+
+        # Only compliant records proceed to imputation and deduplication.
+        df_clean = df.loc[~quarantine_mask].copy()
+
+        logger.info(f"Valid records identified: {len(df_clean)}")
+        logger.info(f"Invalid records quarantined: {len(df_quarantine)}")
+
+        for reason in (
+            "MISSING_VENDOR_NAME",
+            "INVALID_CONTRACT_VALUE",
+            "NEGATIVE_LEAD_TIME",
+        ):
+            reason_count = (
+                df_quarantine["rejection_reason"]
+                .str.contains(reason, regex=False)
+                .sum()
+            )
+            logger.info(
+                f"Rejected records - {reason}: {int(reason_count)}"
+            )
+
+        logger.info("step_4 successfully completed.")
+
+        return df_clean, df_quarantine
+
+    except Exception:
+        logger.exception("step_4 failed: Data quality validation error.")
+        raise
+
+
+# =============================================================================
+# 9. STEP 5: MISSING VALUE IMPUTATION AND DEDUPLICATION
+# =============================================================================
+
+def impute_and_deduplicate(df_clean):
+    """
+    Impute missing lead_time_days using the rounded median of valid
+    records, create is_lead_time_imputed, and retain the latest record
+    per vendor based on last_modified.
+    """
+
+    logger = logging.getLogger(LOGGER_NAME)
+
+    try:
+        logger.info("step_5: Imputation and deduplication started")
+
+        df_clean = df_clean.copy()
+
+        if df_clean.empty:
+            raise ValueError(
+                "No valid records remain after the data quality gate."
+            )
+
+        # Identify missing values before filling them.
+        missing_lead_time = df_clean["lead_time_days"].isna()
+
+        # Calculate median from non-null lead times in valid records.
+        median_lead_time = df_clean["lead_time_days"].median()
+
+        if pd.isna(median_lead_time):
+            raise ValueError(
+                "Median lead time cannot be calculated because all "
+                "valid lead_time_days values are missing."
+            )
+
+        median_lead_time = int(round(median_lead_time))
+
+        # Create the required boolean imputation flag.
+        df_clean["is_lead_time_imputed"] = missing_lead_time.astype(bool)
+
+        # Fill missing lead times with the rounded median.
+        df_clean["lead_time_days"] = (
+            df_clean["lead_time_days"]
+            .fillna(median_lead_time)
+            .round()
+            .astype("int64")
+        )
+
+        logger.info(f"Median lead time calculated: {median_lead_time}")
+        logger.info(
+            f"Missing lead times imputed: {int(missing_lead_time.sum())}"
+        )
+
+        # Sort ascending so keep='last' retains the latest timestamp.
+        df_clean = df_clean.sort_values(
+            by="last_modified",
+            ascending=True,
+            kind="mergesort",
+        )
+
+        records_before = len(df_clean)
+
+        # Retain the latest update for each vendor_id.
+        df_clean = df_clean.drop_duplicates(
+            subset=["vendor_id"],
+            keep="last",
+        )
+
+        duplicates_removed = records_before - len(df_clean)
+
+        logger.info(f"Duplicate records removed: {duplicates_removed}")
+        logger.info(f"Unique vendors retained: {len(df_clean)}")
+        logger.info("step_5 successfully completed.")
+
+        return df_clean.reset_index(drop=True)
+
+    except Exception:
+        logger.exception("step_5 failed: Imputation or deduplication error.")
+        raise
+
