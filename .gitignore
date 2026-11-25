@@ -1,0 +1,26 @@
+# Byte-compiled / optimized Python outputs
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environments
+.venv/
+venv/
+ENV/
+
+# Sensitive Configuration & Credentials (NEVER COMMIT)
+config/config.ini
+.env
+
+# Database Files & Runtime Data Outputs
+*.db
+*.sqlite
+*.sqlite3
+data/output/*.csv
+logs/
+
+# OS & IDE Metadata Files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
