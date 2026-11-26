@@ -24,3 +24,6 @@ logs/
 Thumbs.db
 .vscode/
 .idea/
+
+.data_consolidation.zip
+.Python Data Wrangling Case Study_ Dirty Vendor Master Consolidation.pdf
