@@ -1,12 +1,7 @@
 # Pharmaceutical Procurement Intelligence: Vendor Master Consolidation
 
 ## Project Overview
-This repository contains the ETL data engineering pipeline for consolidating
-dirty, multi-source enterprise vendor data. The solution standardizes
-heterogeneous datasets (ERP vendor master records and manual procurement logs),
-resolves string formatting anomalies, imputes missing metrics, segregates
-invalid records into a quarantine layer, and loads cleaned data into a SQLite
-analytical warehouse for spend auditing.
+This repository contains the ETL data engineering pipeline for consolidating dirty, multi-source enterprise vendor data. The solution standardizes heterogeneous datasets (ERP vendor master records and manual procurement logs), resolves string formatting anomalies, imputes missing metrics, segregates invalid records into a quarantine layer, and loads cleaned data into a SQLite analytical warehouse for spend auditing.
 
 ## Repository Structure
 ```text
@@ -17,7 +12,7 @@ pharma-vendor-master-pipeline/
 │   ├── raw/                      # Raw input datasets (CSV)
 │   └── output/                   # Processed outputs (Ignored by Git)
 ├── sql/
-│   ├── ddl_setup.sql             # Table definitions
+│   ├── ddl_schema.sql            # Table definitions
 │   └── verification_queries.sql  # Audit verification scripts
 ├── src/
 │   └── consolidate_vendor_master.py  # Primary Python ETL engine
@@ -30,7 +25,7 @@ pharma-vendor-master-pipeline/
 
 1. Clone the repository locally:
    ```bash
-   git clone https://github.com/harithrasrinivasan6/pharma-vendor-master-pipeline.git
+   git clone https://github.com/<your-username>/pharma-vendor-master-pipeline.git
    cd pharma-vendor-master-pipeline
    ```
 
@@ -53,15 +48,6 @@ python src/consolidate_vendor_master.py
 ```
 
 ## Verification & Output Rules
-Upon execution, the pipeline creates the following outputs:
-* `data/output/pharmaceutical_procurement.db` (SQLite database containing cleaned tables: `gold_vendor_master`, `gold_vendor_categories`, `err_vendor_quarantine`)
-* `data/output/quarantine_report.csv` (Records flagged for manual review)
-* `logs/etl_vendor_master_<timestamp>.log` (Execution log, including the results of the post-load verification queries)
-
-To re-run the audit queries manually against the generated database:
-```bash
-sqlite3 data/output/pharmaceutical_procurement.db < sql/verification_queries.sql
-```
-
-Generated databases, CSV outputs, logs, and `config/config.ini` are excluded
-from version control via `.gitignore`.
+Upon execution, the pipeline creates two outputs in `data/output/`:
+* `vendor_intelligence.db` (SQLite Database containing cleaned tables)
+* `quarantine_report.csv` (Records flagged for manual review)
